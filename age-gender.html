@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Age &amp; Gender Estimator</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#1a1e27; --panel2:#20263304; --line:#2b3245;
+    --text:#e8eaf0; --muted:#9aa3b5; --accent:#4f8cff; --ok:#35c45e; --warn:#ffb020;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    background:radial-gradient(1200px 600px at 20% -10%,#1c2740 0%,var(--bg) 55%);
+    color:var(--text); min-height:100vh;
+  }
+  .wrap{max-width:1060px; margin:0 auto; padding:28px 18px 60px;}
+  header{display:flex; align-items:center; gap:14px; flex-wrap:wrap}
+  header .logo{font-size:26px}
+  header h1{font-size:20px; margin:0; font-weight:600}
+  header p{margin:2px 0 0; color:var(--muted); font-size:13px}
+  .badge{margin-left:auto; font-size:11px; color:var(--ok); border:1px solid #2c5a3c; background:#12301d; padding:5px 10px; border-radius:999px}
+  .secure-note{
+    display:none; align-items:flex-start; gap:8px; margin-top:12px; font-size:12.5px; line-height:1.5;
+    color:#ffd58a; background:#241d0d; border:1px solid #5a4a1f; border-radius:10px; padding:10px 12px;
+  }
+  .secure-note.show{display:flex}
+  .secure-note code{color:#ffe3ab}
+  .controls{display:flex; gap:10px; flex-wrap:wrap; margin:6px 0 4px}
+  .btn{
+    background:var(--panel); color:var(--text); border:1px solid var(--line);
+    padding:9px 16px; border-radius:10px; font-size:14px; cursor:pointer;
+    transition:background .15s,border-color .15s,transform .05s;
+  }
+  .btn:hover{background:#232a3a; border-color:#3a445c}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600}
+  .btn.primary:hover{background:#3f7cf2}
+  .btn:disabled{opacity:.45; cursor:not-allowed}
+  .stage{
+    background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:14px; margin-top:14px; position:relative; overflow:hidden;
+  }
+  .canvas-wrap{position:relative; width:100%; aspect-ratio:16/9; min-height:260px; background:#0b0d11; border-radius:10px; overflow:hidden}
+  .canvas-wrap.dragging{outline:2px dashed var(--accent); outline-offset:-2px}
+  video, canvas, #imgPreview{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block;
+  }
+  #imgPreview{object-fit:contain; background:#0b0d11}
+  .hide{display:none!important}
+  .overlay-note{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    color:var(--muted); font-size:15px; pointer-events:none; background:var(--panel);
+    border-radius:10px; z-index:2; flex-direction:column; gap:8px;
+  }
+  .spinner{width:34px;height:34px;border:3px solid #2b3245;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  aside{
+    position:absolute; right:14px; top:14px; width:230px; z-index:3;
+    background:rgba(15,17,21,.82); backdrop-filter:blur(6px); border:1px solid var(--line);
+    border-radius:12px; padding:12px 14px; font-size:13px;
+    max-height:calc(100% - 28px); overflow-y:auto;
+  }
+  aside .row{display:flex; justify-content:space-between; align-items:center; padding:3px 0}
+  aside .row + .row{border-top:1px solid #262d3d}
+  aside .lbl{color:var(--muted)}
+  aside .val{font-weight:600}
+  aside .bar{height:6px; background:#262d3d; border-radius:4px; margin-top:4px; overflow:hidden}
+  aside .bar i{display:block; height:100%; border-radius:4px; background:var(--accent)}
+  aside.baby{width:230px}
+  .facesep{height:1px; background:#262d3d; margin:10px 0}
+  .facelabel{font-size:11px; color:var(--muted); margin-bottom:2px}
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px 18px}
+  .card h2{margin:0 0 8px; font-size:15px}
+  .card p{margin:0; color:var(--muted); font-size:13px; line-height:1.55}
+  .disclaimer{border-color:#5a4a1f; background:#241d0d}
+  .disclaimer h2{color:var(--warn)}
+  .note{font-size:12px; color:var(--muted); margin-top:12px; text-align:center}
+  code{background:#0b0d11; padding:1px 5px; border-radius:5px; color:#9ec8ff; font-size:.95em}
+  #status{font-size:13px; color:var(--muted); margin-top:10px; min-height:18px}
+  @media (max-width:720px){
+    .cols{grid-template-columns:1fr}
+    aside{position:static; width:auto; margin-top:12px; max-height:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="logo">&#129299;</span>
+    <div>
+      <h1>Age &amp; Gender Estimator</h1>
+      <p>Runs 100% in your browser &mdash; your camera feed and photos never leave this device.</p>
+    </div>
+    <span class="badge">&#9679; all processing is local</span>
+  </header>
+
+  <div class="secure-note" id="secureNote">
+    <span>&#9888;&#65039;</span>
+    <span>Opened directly from disk, so most browsers will block camera access here &mdash; photo upload still works fine. For live camera, serve this folder locally (e.g. <code>python -m http.server</code>) and open it as <code>http://localhost:8000/age-gender.html</code>.</span>
+  </div>
+
+  <div class="controls">
+    <button class="btn primary" id="btnCam">Use camera</button>
+    <button class="btn" id="btnSnap" style="border-color:var(--accent);color:#7cafff" hidden>Take picture &amp; detect</button>
+    <button class="btn" id="btnResume" hidden>Back to live</button>
+    <button class="btn" id="btnFlip" hidden>Switch camera</button>
+    <label class="btn" for="fileInput">Upload a photo</label>
+    <input type="file" id="fileInput" accept="image/*" class="hide">
+    <button class="btn" id="btnDownload" hidden>Save annotated photo</button>
+  </div>
+  <p class="note" style="margin:2px 0 0;text-align:left">Tip: you can also drag a photo straight onto the frame below. Group photos work too &mdash; every face gets its own result.</p>
+
+  <div class="stage">
+    <div class="canvas-wrap" id="cwrap">
+      <video id="video" autoplay muted playsinline class="hide"></video>
+      <canvas id="overlay" class="hide"></canvas>
+      <canvas id="capture" class="hide"></canvas>
+      <img id="imgPreview" class="hide" alt="preview">
+      <div class="overlay-note" id="startNote">
+        <div class="spinner"></div>
+        <span id="startText">Loading AI models…</span>
+      </div>
+    </div>
+    <aside id="panel" class="hide baby">
+      <div id="panelInner"></div>
+    </aside>
+    <div id="status" role="status" aria-live="polite"></div>
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <h2>How it works</h2>
+      <p>The face detector + neural network estimate each face. Gender is reported as <b>male or female</b> only &mdash; that's all the model can output. It's guessing from appearance, so it can say nothing about anyone's actual identity or sexuality.</p>
+      <p style="margin-top:8px"><b>Does anything throw it off?</b> Yes &mdash; glasses (especially sunglasses), hats, beards, poor lighting, and tilted faces reduce accuracy, so take any result as a rough guess.</p>
+    </div>
+    <div class="card disclaimer">
+      <h2>Why not nationality?</h2>
+      <p>This app deliberately does <b>not</b> try to guess nationality or ethnicity. Decades of research show appearance cannot reliably determine someone&rsquo;s nationality &mdash; people are far more diverse than any label. Any attempt would be inaccurate and harmful, and that&rsquo;s not what a face does.</p>
+    </div>
+  </div>
+
+  <p class="note">First run downloads ~2&nbsp;MB of model weights from a CDN (cached afterwards). Needs internet on first load; needs Firefox/Chrome/Edge for webcam access.</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script>
+(function(){
+  "use strict";
+  var MODEL_URLS = [
+    "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights",
+    "https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model",
+    "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js/weights"
+  ];
+  var MODEL_LOAD_TIMEOUT = 20000; // ms per mirror before trying the next one
+  var MIN_CONFIDENCE = 0.55;      // below this we show "unsure"
+  var HIGH_CONFIDENCE = 0.85;     // above this it's safe to be specific
+  var MAX_IMAGE_DIM = 1600;       // downscale big uploads for speed; doesn't hurt accuracy
+
+  var video = document.getElementById("video");
+  var overlay = document.getElementById("overlay");
+  var capture = document.getElementById("capture");
+  var cwrap = document.getElementById("cwrap");
+  var imgPreview = document.getElementById("imgPreview");
+  var startNote = document.getElementById("startNote");
+  var startText = document.getElementById("startText");
+  var statusEl = document.getElementById("status");
+  var panel = document.getElementById("panel");
+  var panelInner = document.getElementById("panelInner");
+  var secureNote = document.getElementById("secureNote");
+  var btnCam = document.getElementById("btnCam");
+  var btnSnap = document.getElementById("btnSnap");
+  var btnResume = document.getElementById("btnResume");
+  var btnFlip = document.getElementById("btnFlip");
+  var btnDownload = document.getElementById("btnDownload");
+  var fileInput = document.getElementById("fileInput");
+
+  var stream = null;
+  var activeMode = null; // "video" | "image"
+  var frozen = false;    // a picture was taken; detecting on the frozen frame
+  var currentFacing = "user"; // "user" | "environment" (mobile front/back camera)
+  var ocv = overlay.getContext("2d");
+  var cap = capture.getContext("2d");
+  var timer = null;      // loop scheduler handle (setTimeout)
+
+  var detected = [];         // current face results
+  var detOptsVideo = null;   // tiny face detector options tuned for the live loop (fast)
+  var detOptsPhoto = null;   // tuned for one-shot stills/uploads (more thorough)
+  var lastNoFaceAt = 0;      // throttle "no face" nagging
+  var lastErrAt = 0;         // throttle error spam
+
+  function setStatus(msg){ statusEl.textContent = msg; }
+
+  function setBtn(on){
+    btnCam.textContent = on ? "Stop camera" : "Use camera";
+  }
+
+  function checkSecureContext(){
+    if(!window.isSecureContext){
+      secureNote.classList.add("show");
+    }
+  }
+
+  function fixAspect(w, h){
+    if(!w || !h) return;
+    cwrap.style.aspectRatio = w + " / " + h; // no more stretching, ever
+  }
+
+  function srcDims(){
+    if(activeMode === "video"){
+      var vw = video.videoWidth || 0, vh = video.videoHeight || 0;
+      return [vw, vh];
+    }
+    if(activeMode === "image"){
+      return [imgPreview.naturalWidth || 0, imgPreview.naturalHeight || 0];
+    }
+    return [0,0];
+  }
+
+  // overlay raster == displayed box size, so it can never be stretched
+  function prepOverlay(){
+    if(!cwrap.clientWidth || !cwrap.clientHeight) return false;
+    overlay.width = cwrap.clientWidth;
+    overlay.height = cwrap.clientHeight;
+    return true;
+  }
+
+  // draws face boxes and labels on ctx, scaled by s, in source coordinates
+  function paintLabels(ctx, s){
+    if(!detected.length) return;
+    ctx.save();
+    ctx.scale(s, s);
+    ctx.lineWidth = 3 / s;
+    ctx.strokeStyle = "rgba(79,140,255,0.9)";
+    var labelH = 28 / s, labelPad = 7 / s;
+    detected.forEach(function(r, idx){
+      var box = r.detection.box;
+      var g = r.gender; var gs = r.genderProbability;
+      var age = Math.round(r.age);
+      ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+      var prefix = detected.length > 1 ? ("#" + (idx + 1) + " ") : "";
+      var label = prefix + age + " yrs - " + g + " (" + (gs*100).toFixed(0) + "%)";
+      ctx.font = "600 " + (18 / s) + "px system-ui, sans-serif";
+      var tw = ctx.measureText(label).width;
+      ctx.fillStyle = "rgba(15,17,21,0.78)";
+      var bx = box.x, by = box.y - labelH - 4 / s;
+      if(by < 0) by = box.y + box.height + 6 / s;
+      ctx.fillRect(bx, by, tw + 2 * labelPad, labelH);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(label, bx + labelPad, by + labelH * 0.7);
+    });
+    ctx.restore();
+  }
+
+  function drawResults(){
+    ocv.clearRect(0,0,overlay.width,overlay.height);
+    var d = srcDims();
+    if(!d[0] || !d[1] || !overlay.width) return;
+    paintLabels(ocv, overlay.width / d[0]);
+  }
+
+  function renderPanel(){
+    if(!detected.length){
+      panel.classList.add("hide");
+      return;
+    }
+    panel.classList.remove("hide");
+    var multi = detected.length > 1;
+    var html = '<div style="font-weight:700;font-size:15px;margin-bottom:4px">' +
+      (multi ? detected.length + ' faces detected' : 'Estimated results') + '</div>';
+
+    detected.forEach(function(r, idx){
+      var g = r.gender; var gs = r.genderProbability;
+      var age = Math.round(r.age);
+      var dconf = r.detection.score;
+
+      if(idx > 0) html += '<div class="facesep"></div>';
+      if(multi) html += '<div class="facelabel">Face #' + (idx + 1) + '</div>';
+
+      // Gender row
+      html += '<div class="row"><span class="lbl">Gender</span>';
+      if(gs >= MIN_CONFIDENCE){
+        html += '<span class="val">' + g.charAt(0).toUpperCase() + g.slice(1) + '</span>';
+      } else {
+        html += '<span class="val" style="color:var(--warn)">Unsure</span>';
+      }
+      html += '</div><div class="bar"><i style="width:' + Math.round(gs*100) + '%"></i></div>';
+
+      // Age row
+      html += '<div class="row" style="margin-top:8px"><span class="lbl">Age</span>';
+      if(dconf >= MIN_CONFIDENCE){
+        var lo = Math.max(0, age - 8), hi = age + 8;
+        html += '<span class="val">' + lo + '&ndash;' + hi + ' (mid ' + age + ')</span>';
+      } else {
+        html += '<span class="val" style="color:var(--warn)">Unsure</span>';
+      }
+      html += '</div><div class="bar"><i style="width:60%"></i></div>';
+
+      // Confidence + trust statement
+      html += '<div class="row" style="margin-top:8px"><span class="lbl">Face match</span>' +
+              '<span class="val" style="color:' + (dconf>=HIGH_CONFIDENCE?'var(--ok)':'#ddd') + '">' +
+              (dconf*100).toFixed(0) + '%</span></div>';
+      html += '<div style="font-size:11px;color:var(--muted);margin-top:8px">' +
+              (dconf >= HIGH_CONFIDENCE ? 'Confident estimate.'
+              : dconf >= MIN_CONFIDENCE ? 'Moderate confidence &mdash; an educated guess.'
+              : 'Low confidence &mdash; best not to rely on this.') + '</div>';
+    });
+
+    html += '<div style="font-size:11px;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid #262d3d">Male/female only. Glasses, hats or bad light can reduce accuracy.</div>';
+    panelInner.innerHTML = html;
+  }
+
+  function analyze(){
+    if(activeMode === "video" && !video.videoWidth) return Promise.resolve();
+    if(activeMode === "image" && !imgPreview.naturalWidth) return Promise.resolve();
+    var input = activeMode === "video" ? video : imgPreview;
+    var opts = activeMode === "video" ? detOptsVideo : detOptsPhoto;
+    return faceapi.detectAllFaces(input, opts).withAgeAndGender()
+      .then(function(res){
+        detected = res;
+        prepOverlay();
+        drawResults();
+        renderPanel();
+        if(activeMode === "video"){
+          if(res.length){
+            lastNoFaceAt = 0;
+            setStatus("");
+          } else {
+            var now = Date.now();
+            if(!lastNoFaceAt || now - lastNoFaceAt > 1500){
+              lastNoFaceAt = now;
+              setStatus("No face detected yet — face the camera and make sure you're well lit.");
+            }
+          }
+        } else if(activeMode === "image"){
+          btnDownload.hidden = !res.length;
+          setStatus(res.length ? ("Detected " + res.length + " face" + (res.length > 1 ? "s" : "") + ".") : "No face found in this photo.");
+        }
+      })
+      .catch(function(e){
+        var now = Date.now();
+        if(now - lastErrAt > 2000){
+          lastErrAt = now;
+          setStatus("Detection error: " + (e && e.message ? e.message : e) + " (check the browser console)");
+        }
+      });
+  }
+
+  function loopAnalyze(){
+    if(activeMode !== "video" || frozen) return;
+    analyze().then(function(){
+      // pace the loop: wait for each detection to finish before scheduling the next,
+      // so overlapping TensorFlow calls can never pile up and hang
+      timer = setTimeout(loopAnalyze, 120);
+    });
+  }
+
+  function takePicture(){
+    if(activeMode !== "video" || frozen) return;
+    frozen = true;
+    clearTimeout(timer);
+    timer = null;
+
+    // 1) grab the current camera frame at full native resolution
+    var d = srcDims();
+    if(!d[0] || !d[1]){ d = [video.videoWidth || 640, video.videoHeight || 480]; }
+    capture.width = d[0]; capture.height = d[1];
+    cap.clearRect(0,0,capture.width,capture.height);
+    cap.drawImage(video, 0, 0, capture.width, capture.height);
+
+    setStatus("Detecting on the captured picture…");
+    video.classList.add("hide");
+    overlay.classList.add("hide");
+    capture.classList.remove("hide");
+    btnSnap.hidden = true;
+    btnResume.hidden = false;
+    btnDownload.hidden = true;
+
+    // 2) run detection on the FROZEN frame, so results stay fixed to this picture
+    var detectPromise;
+    try {
+      detectPromise = faceapi.detectAllFaces(capture, detOptsPhoto).withAgeAndGender();
+    } catch(e){
+      detectPromise = Promise.reject(e);
+    }
+    // guard: if detection ever stalls, don't leave the user hanging forever
+    var timeout = new Promise(function(wrap){ setTimeout(function(){ wrap("__timeout__"); }, 4000); });
+    Promise.race([detectPromise, timeout])
+      .then(function(res){
+        if(res === "__timeout__"){
+          setStatus("Detection is taking too long on this device — showing the picture as-is.");
+          return;
+        }
+        detected = res || [];
+        paintLabels(cap, 1);
+        renderPanel();
+        btnDownload.hidden = !detected.length;
+        if(res.length){
+          setStatus("Detected " + res.length + " face" + (res.length > 1 ? "s" : "") + " in the picture.");
+        } else {
+          setStatus("No face found in the captured picture — try again in better light.");
+        }
+      })
+      .catch(function(e){
+        console.error("picture detection failed:", e);
+        setStatus("Detection failed: " + (e && e.message ? e.message : e));
+      });
+  }
+
+  function resumeLive(){
+    if(activeMode !== "video" || !frozen) return;
+    frozen = false;
+    capture.classList.add("hide");
+    video.classList.remove("hide");
+    overlay.classList.remove("hide");
+    btnSnap.hidden = false;
+    btnResume.hidden = true;
+    btnDownload.hidden = true;
+    cap.clearRect(0,0,capture.width,capture.height);
+    setStatus("");
+    loopAnalyze();
+  }
+
+  // Builds a canvas with the photo/frame plus its face boxes baked in, for download.
+  function exportComposite(){
+    if(activeMode === "video" && frozen){
+      return capture; // takePicture() already painted the boxes onto this canvas
+    }
+    if(activeMode === "image"){
+      var d = srcDims();
+      if(!d[0] || !d[1]) return null;
+      var out = document.createElement("canvas");
+      out.width = d[0]; out.height = d[1];
+      var octx = out.getContext("2d");
+      octx.drawImage(imgPreview, 0, 0, d[0], d[1]);
+      paintLabels(octx, 1);
+      return out;
+    }
+    return null;
+  }
+
+  function downloadResult(){
+    var out = exportComposite();
+    if(!out){ setStatus("Nothing to save yet — take or upload a picture first."); return; }
+    out.toBlob(function(blob){
+      if(!blob){ setStatus("Could not prepare the image for download."); return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "age-gender-result.png";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    }, "image/png");
+  }
+
+  function refreshFlipVisibility(){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices){ return; }
+    navigator.mediaDevices.enumerateDevices().then(function(devices){
+      var cams = devices.filter(function(d){ return d.kind === "videoinput"; });
+      btnFlip.hidden = cams.length < 2;
+    }).catch(function(){ /* ignore — flip button just stays hidden */ });
+  }
+
+  function startVideo(facing, isRetry){
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      setStatus("Webcam not supported in this browser. Try Firefox, Chrome, or Edge.");
+      return;
+    }
+    var wantFacing = facing || currentFacing;
+    setStatus("Waiting for camera permission…");
+    navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: wantFacing },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    })
+      .then(function(s){
+        currentFacing = wantFacing;
+        stream = s;
+        stopImageMode();
+        frozen = false;
+        capture.classList.add("hide");
+        video.srcObject = s;
+        activeMode = "video";
+        setBtn(true);
+        video.onloadedmetadata = function(){
+          video.classList.remove("hide");
+          overlay.classList.remove("hide");
+          fixAspect(video.videoWidth, video.videoHeight);
+          btnSnap.hidden = false;
+          btnResume.hidden = true;
+          btnDownload.hidden = true;
+          setStatus("");
+          loopAnalyze();
+        };
+        refreshFlipVisibility();
+      })
+      .catch(function(err){
+        if(!isRetry && facing && facing !== currentFacing){
+          // couldn't switch camera — fall back to the one that was already working
+          setStatus("That camera isn't available on this device — switching back.");
+          startVideo(currentFacing, true);
+          return;
+        }
+        setStatus("Could not access camera: " + (err.message || err.name));
+      });
+  }
+
+  function stopImageMode(){
+    if(activeMode === "image"){
+      URL.revokeObjectURL(imgPreview.src);
+    }
+    imgPreview.classList.add("hide");
+    imgPreview.removeAttribute("src");
+    clearTimeout(timer);
+    timer = null;
+  }
+
+  function stopVideo(){
+    clearTimeout(timer);
+    timer = null;
+    if(stream){
+      stream.getTracks().forEach(function(t){ t.stop(); });
+      stream = null;
+    }
+    video.srcObject = null;
+    video.classList.add("hide");
+    video.pause();
+    capture.classList.add("hide");
+    btnSnap.hidden = true;
+    btnResume.hidden = true;
+    btnFlip.hidden = true;
+    btnDownload.hidden = true;
+    frozen = false;
+    activeMode = null;
+    detected = [];
+    ocv.clearRect(0,0,overlay.width,overlay.height);
+    panel.classList.add("hide");
+    setBtn(false);
+    setStatus("");
+  }
+
+  function loadImage(file){
+    if(!file || !file.type || file.type.indexOf("image/") !== 0){
+      setStatus("That doesn't look like an image file — please choose a photo.");
+      return;
+    }
+    stopVideo();
+    activeMode = "image";
+    btnSnap.hidden = true;
+    btnResume.hidden = true;
+    btnDownload.hidden = true;
+
+    var rawUrl = URL.createObjectURL(file);
+    var probe = new Image();
+
+    function show(url, revokeRawAfter){
+      stopImageMode(); // revokes whatever was previously loaded, if anything
+      imgPreview.src = url;
+      imgPreview.onload = function(){
+        imgPreview.classList.remove("hide");
+        overlay.classList.remove("hide");
+        startNote.classList.add("hide");
+        fixAspect(imgPreview.naturalWidth, imgPreview.naturalHeight);
+        setStatus("Analyzing photo…");
+        detected = [];
+        setTimeout(analyze, 120); // let canvas paint
+        if(revokeRawAfter) URL.revokeObjectURL(rawUrl);
+      };
+    }
+
+    probe.onload = function(){
+      var w = probe.naturalWidth, h = probe.naturalHeight;
+      if(Math.max(w, h) > MAX_IMAGE_DIM){
+        var scale = MAX_IMAGE_DIM / Math.max(w, h);
+        var tmp = document.createElement("canvas");
+        tmp.width = Math.round(w * scale);
+        tmp.height = Math.round(h * scale);
+        tmp.getContext("2d").drawImage(probe, 0, 0, tmp.width, tmp.height);
+        tmp.toBlob(function(blob){
+          if(!blob){ show(rawUrl, false); return; }
+          show(URL.createObjectURL(blob), true);
+        }, "image/jpeg", 0.9);
+      } else {
+        show(rawUrl, false);
+      }
+    };
+    probe.onerror = function(){
+      URL.revokeObjectURL(rawUrl);
+      setStatus("Could not read that file as an image.");
+    };
+    probe.src = rawUrl;
+  }
+
+  // ---- model loading ----
+  function loadModels(urls){
+    var url = urls[0];
+    setStatus(urls.length > 1 ? "Downloading AI models (will try a backup mirror if needed)…" : "Downloading AI models (first time)…");
+    startNote.classList.remove("hide");
+    startText.textContent = "Loading AI models…";
+    var loadPromise = Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(url),
+      faceapi.nets.ageGenderNet.loadFromUri(url)
+    ]);
+    var timeout = new Promise(function(_, reject){
+      setTimeout(function(){ reject(new Error("timed out")); }, MODEL_LOAD_TIMEOUT);
+    });
+    Promise.race([loadPromise, timeout]).then(function(){
+      detOptsVideo = new faceapi.TinyFaceDetectorOptions({inputSize:224, scoreThreshold:0.45});
+      detOptsPhoto = new faceapi.TinyFaceDetectorOptions({inputSize:416, scoreThreshold:0.4});
+      startNote.classList.add("hide");
+      btnCam.disabled = false;
+      checkSecureContext();
+      startVideo(); // open the camera automatically once ready (harmlessly no-ops if blocked)
+    }).catch(function(err){
+      if(urls.length > 1){
+        console.warn("Model load failed from " + url, err);
+        loadModels(urls.slice(1));
+      } else {
+        startNote.classList.remove("hide");
+        startText.textContent = "Model download failed — check internet, then reload.";
+        setStatus("Failed: " + (err && err.message ? err.message : err));
+        checkSecureContext();
+      }
+    });
+  }
+
+  btnCam.addEventListener("click", function(){
+    if(stream || activeMode === "video"){ stopVideo(); return; }
+    startVideo();
+  });
+
+  btnSnap.addEventListener("click", takePicture);
+  btnResume.addEventListener("click", resumeLive);
+  btnDownload.addEventListener("click", downloadResult);
+  btnFlip.addEventListener("click", function(){
+    if(!stream) return;
+    var next = currentFacing === "user" ? "environment" : "user";
+    stream.getTracks().forEach(function(t){ t.stop(); });
+    stream = null;
+    startVideo(next);
+  });
+
+  fileInput.addEventListener("change", function(){
+    if(fileInput.files && fileInput.files[0]){
+      loadImage(fileInput.files[0]);
+    }
+  });
+
+  ["dragenter","dragover"].forEach(function(evt){
+    cwrap.addEventListener(evt, function(e){
+      e.preventDefault();
+      if(e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      cwrap.classList.add("dragging");
+    });
+  });
+  ["dragleave","dragend","drop"].forEach(function(evt){
+    cwrap.addEventListener(evt, function(e){
+      e.preventDefault();
+      cwrap.classList.remove("dragging");
+    });
+  });
+  cwrap.addEventListener("drop", function(e){
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f) loadImage(f);
+  });
+
+  video.addEventListener("play", function(){});
+
+  btnCam.disabled = true;
+  if(typeof faceapi === "undefined"){
+    setStatus("Could not load face-api.js from CDN. Check your internet and reload.");
+    checkSecureContext();
+  } else {
+    loadModels(MODEL_URLS);
+  }
+})();
+</script>
+</body>
+</html>
